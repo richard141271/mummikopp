@@ -424,42 +424,19 @@ async function handleSaveCup(e) {
     let imageUrl = null;
 
     if (imageFile) {
-        if (!navigator.onLine) {
-            alert('Kan ikke laste opp bilde mens du er offline. Prøv igjen senere.');
-            submitBtn.disabled = false;
-            submitBtn.innerText = originalBtnText;
-            return;
-        }
-        
-        submitBtn.innerText = 'Laster opp bilde...';
+        submitBtn.innerText = 'Komprimerer bilde...';
         
         try {
-            // Sanitize filename to avoid path issues
-            const safeName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const fileName = `${currentUser.uid}/${Date.now()}_${safeName}`;
-            const storageRef = firebase.ref(storage, 'cup-images/' + fileName);
-            
-            console.log("Starting upload...", fileName);
-            await firebase.uploadBytes(storageRef, imageFile);
-            console.log("Upload complete, getting URL...");
-            imageUrl = await firebase.getDownloadURL(storageRef);
-            console.log("Image URL obtained:", imageUrl);
+            // New strategy: Compress to Base64 and store directly in Firestore
+            // This avoids Firebase Storage completely (which requires billing/upgrades for some regions/accounts)
+            imageUrl = await compressImage(imageFile);
+            console.log("Image compressed successfully, size:", imageUrl.length);
         } catch (err) {
-            console.error('Upload error detailed:', err);
-            
-            let errorMsg = 'Feil ved opplasting av bilde: ' + err.message;
-            if (err.code === 'storage/unauthorized' || err.message.includes('unauthorized')) {
-                errorMsg = 'MANGLER TILGANG: Du må aktivere Firebase Storage og sette reglene til "allow read, write: if request.auth != null;".';
-            } else if (err.message.includes('ERR_FAILED')) {
-                 errorMsg = 'Nettverksfeil ved opplasting (mulig CORS/Adblock).';
-            }
-
-            if (confirm(`${errorMsg}\n\nVil du lagre koppen UTEN bilde?`)) {
-                imageUrl = null; // Proceed without image
-            } else {
+            console.error('Image processing error:', err);
+            if (!confirm(`Kunne ikke behandle bildet: ${err.message}\n\nVil du lagre uten bilde?`)) {
                 submitBtn.disabled = false;
                 submitBtn.innerText = originalBtnText;
-                return; // Stop saving
+                return;
             }
         }
     }
@@ -564,6 +541,49 @@ function handleImagePreview(e) {
     }
 }
 
+function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                // Max dimensions
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Compress to JPEG 0.6 quality
+                // This typically yields 30-80KB images, well within Firestore 1MB limit
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(new Error("Kunne ikke laste bilde for komprimering"));
+        };
+        reader.onerror = (err) => reject(new Error("Kunne ikke lese fil"));
+    });
+}
+
 async function syncOfflineData() {
     if (offlineQueue.length === 0) return;
     
@@ -615,6 +635,7 @@ function updateSummaryUI() {
 
     document.getElementById('stat-count').innerText = totalCount;
     document.getElementById('stat-value').innerText = totalValue.toLocaleString('nb-NO') + ' kr';
+    document.getElementById('stat-cost').innerText = totalCost.toLocaleString('nb-NO') + ' kr';
     
     const incEl = document.getElementById('stat-increase');
     incEl.innerText = (increase >= 0 ? '+' : '') + increase.toLocaleString('nb-NO') + ' kr';
