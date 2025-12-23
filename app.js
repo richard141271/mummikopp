@@ -611,18 +611,40 @@ function generatePDF() {
     doc.text(`Generert: ${new Date().toLocaleDateString('nb-NO')}`, 14, 30);
     doc.text(`Antall kopper: ${targetCups.length}`, 14, 36);
     
-    const tableData = targetCups.map(cup => [
-        cup.name,
-        cup.series || '-',
-        cup.year || '-',
-        cup.rarity || '-',
-        (cup.current_value || 0) + ' kr'
+    const tableData = targetCups.map(cup => {
+        const cost = parseFloat(cup.price_paid || 0);
+        const val = parseFloat(cup.current_value || 0);
+        const diff = val - cost;
+        return [
+            cup.name,
+            cup.series || '-',
+            cup.year || '-',
+            cost + ' kr',
+            val + ' kr',
+            (diff >= 0 ? '+' : '') + diff + ' kr'
+        ];
+    });
+
+    // Calculate totals
+    const totalCost = targetCups.reduce((sum, cup) => sum + parseFloat(cup.price_paid || 0), 0);
+    const totalValue = targetCups.reduce((sum, cup) => sum + parseFloat(cup.current_value || 0), 0);
+    const totalDiff = totalValue - totalCost;
+
+    // Add total row
+    tableData.push([
+        { content: 'TOTALT', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: totalCost + ' kr', styles: { fontStyle: 'bold' } },
+        { content: totalValue + ' kr', styles: { fontStyle: 'bold' } },
+        { content: (totalDiff >= 0 ? '+' : '') + totalDiff + ' kr', styles: { fontStyle: 'bold', textColor: totalDiff >= 0 ? [0, 128, 0] : [255, 0, 0] } }
     ]);
 
     doc.autoTable({
-        head: [['Navn', 'Serie', 'År', 'Sjeldenhet', 'Verdi']],
+        head: [['Navn', 'Serie', 'År', 'Innkjøp', 'Verdi nå', 'Differanse']],
         body: tableData,
         startY: 40,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80] },
+        styles: { fontSize: 10 },
     });
     
     doc.save("mummikopp-samling.pdf");
