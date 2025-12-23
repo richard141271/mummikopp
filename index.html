@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mummikopp Samler</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="icon.png">
     <link rel="stylesheet" href="style.css">
     <!-- Firebase JS SDKs -->
     <script type="module">
@@ -46,8 +48,8 @@
                 <label for="email">E-post</label>
                 <input type="email" id="email" required placeholder="din@epost.no">
                 
-                <label for="password">Passord</label>
-                <input type="password" id="password" required minlength="6" placeholder="******">
+                <label for="password">PIN-kode (4 siffer)</label>
+                <input type="password" id="password" required maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="****">
                 
                 <div class="auth-buttons">
                     <button type="submit" id="login-btn">Logg inn</button>

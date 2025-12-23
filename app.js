@@ -111,7 +111,8 @@ function handleAuthSuccess() {
 async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const pin = document.getElementById('password').value;
+    const password = pin + '00'; // Append 00 to make it 6 chars
     
     try {
         await firebase.signInWithEmailAndPassword(auth, email, password);
@@ -124,12 +125,14 @@ async function handleLogin(e) {
 
 async function handleRegister() {
     const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const pin = document.getElementById('password').value;
 
-    if (!email || !password) {
-        alert('Fyll inn både e-post og passord for å registrere.');
+    if (!email || !pin || pin.length !== 4) {
+        alert('Fyll inn e-post og en 4-sifret PIN.');
         return;
     }
+
+    const password = pin + '00'; // Append 00 to make it 6 chars
 
     try {
         await firebase.createUserWithEmailAndPassword(auth, email, password);
