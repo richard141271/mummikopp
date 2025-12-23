@@ -9,7 +9,7 @@
     <!-- Firebase JS SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
         
@@ -17,7 +17,7 @@
         // Ideally we should refactor app.js to be a module, but for now we expose the SDK parts we need.
         window.firebaseModules = {
             initializeApp,
-            getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink,
+            getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut,
             getFirestore, collection, addDoc, getDocs, updateDoc, doc, query, where, orderBy,
             getStorage, ref, uploadBytes, getDownloadURL
         };
@@ -45,7 +45,14 @@
             <form id="auth-form">
                 <label for="email">E-post</label>
                 <input type="email" id="email" required placeholder="din@epost.no">
-                <button type="submit">Send magisk lenke</button>
+                
+                <label for="password">Passord</label>
+                <input type="password" id="password" required minlength="6" placeholder="******">
+                
+                <div class="auth-buttons">
+                    <button type="submit" id="login-btn">Logg inn</button>
+                    <button type="button" id="register-btn" onclick="handleRegister()">Registrer ny bruker</button>
+                </div>
             </form>
             <p id="auth-message"></p>
         </section>

@@ -42,23 +42,6 @@ function initFirebase() {
             if (!isSharedView) showSection('view-auth');
         }
     });
-
-    // Check for email link sign-in
-    if (firebase.isSignInWithEmailLink(auth, window.location.href)) {
-        let email = window.localStorage.getItem('emailForSignIn');
-        if (!email) {
-            email = window.prompt('Vennligst bekreft e-posten din for å logge inn:');
-        }
-        firebase.signInWithEmailLink(auth, email, window.location.href)
-            .then((result) => {
-                window.localStorage.removeItem('emailForSignIn');
-                window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
-                // Auth listener will handle the rest
-            })
-            .catch((error) => {
-                alert('Feil ved innlogging via lenke: ' + error.message);
-            });
-    }
 }
 
 // State
@@ -128,29 +111,33 @@ function handleAuthSuccess() {
 async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
     
-    console.log('Forsøker å logge inn med:', email);
-    
-    const actionCodeSettings = {
-        url: window.location.href, // Redirect back to this app
-        handleCodeInApp: true
-    };
+    try {
+        await firebase.signInWithEmailAndPassword(auth, email, password);
+        // Auth state listener will handle UI update
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('Innlogging feilet: ' + error.message);
+    }
+}
+
+async function handleRegister() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    if (!email || !password) {
+        alert('Fyll inn både e-post og passord for å registrere.');
+        return;
+    }
 
     try {
-        await firebase.sendSignInLinkToEmail(auth, email, actionCodeSettings);
-        window.localStorage.setItem('emailForSignIn', email);
-        console.log('Magisk lenke sendt!');
-        document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
+        await firebase.createUserWithEmailAndPassword(auth, email, password);
+        alert('Bruker opprettet! Du er nå logget inn.');
+        // Auth state listener will handle UI update
     } catch (error) {
-        // Fallback: If sendSignInLink fails (e.g. config issue), try simple alert
-        console.error('Login error:', error);
-        
-        // Note: For a real app, you should use Email Link or Google Auth. 
-        // For testing without setting up Email/SMTP in Firebase console, 
-        // you might want to use Anonymous auth temporarily:
-        // await firebase.signInAnonymously(auth);
-        
-        alert('Feil ved sending av lenke: ' + error.message);
+        console.error('Registration error:', error);
+        alert('Registrering feilet: ' + error.message);
     }
 }
 
