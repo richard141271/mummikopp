@@ -1,10 +1,11 @@
-const CACHE_NAME = 'mummi-cache-v1';
+const CACHE_NAME = 'mummi-cache-v2';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './style.css',
     './app.js',
     './manifest.json',
+    './icon.png',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js',
