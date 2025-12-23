@@ -3,6 +3,11 @@
 const SUPABASE_URL = 'https://your-project.supabase.co';
 const SUPABASE_KEY = 'your-anon-key';
 
+if (SUPABASE_URL === 'https://your-project.supabase.co') {
+    alert('VIKTIG: Du må sette inn din egen Supabase URL og Key i app.js for at appen skal virke!');
+    console.error('Mangler Supabase konfigurasjon. Se app.js linje 3-4.');
+}
+
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // State
@@ -94,11 +99,21 @@ function handleAuthSuccess() {
 async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('email').value;
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    if (error) {
-        alert('Feil ved innlogging: ' + error.message);
-    } else {
-        document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
+    
+    console.log('Forsøker å logge inn med:', email);
+    
+    try {
+        const { error } = await supabase.auth.signInWithOtp({ email });
+        if (error) {
+            console.error('Login error:', error);
+            alert('Feil ved innlogging: ' + error.message);
+        } else {
+            console.log('Magisk lenke sendt!');
+            document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
+        }
+    } catch (err) {
+        console.error('Uventet feil:', err);
+        alert('Noe gikk galt. Sjekk konsollen (F12) for detaljer.');
     }
 }
 
