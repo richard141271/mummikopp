@@ -417,8 +417,11 @@ async function handleSaveCup(e) {
             return;
         }
         try {
-            const fileName = `${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+            // Sanitize filename to avoid path issues
+            const safeName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const fileName = `${currentUser.uid}/${Date.now()}_${safeName}`;
             const storageRef = firebase.ref(storage, 'cup-images/' + fileName);
+            
             console.log("Starting upload...", fileName);
             await firebase.uploadBytes(storageRef, imageFile);
             console.log("Upload complete, getting URL...");
@@ -427,17 +430,18 @@ async function handleSaveCup(e) {
         } catch (err) {
             console.error('Upload error detailed:', err);
             
+            let errorMsg = 'Feil ved opplasting av bilde: ' + err.message;
             if (err.code === 'storage/unauthorized' || err.message.includes('unauthorized')) {
-                alert('Mangler tilgang til å laste opp bilder. Sjekk Storage Rules i Firebase Console.');
-            } else if (err.code === 'storage/retry-limit-exceeded') {
-                alert('Opplasting tok for lang tid. Sjekk internettforbindelsen din.');
+                errorMsg = 'Mangler tilgang til å laste opp bilder. Sjekk Storage Rules i Firebase Console.';
             } else if (err.message.includes('ERR_FAILED')) {
-                 alert('Nettverksfeil ved opplasting av bilde (CORS/Adblock?). Prøv en annen nettleser eller sjekk konsollen.');
-            } else {
-                alert('Feil ved opplasting av bilde: ' + err.message + ' (Se konsoll for detaljer)');
+                 errorMsg = 'Nettverksfeil ved opplasting (mulig CORS/Adblock).';
             }
-            // Allow saving without image if upload fails? No, return to avoid data mismatch
-            return;
+
+            if (confirm(`${errorMsg}\n\nVil du lagre koppen UTEN bilde?`)) {
+                imageUrl = null; // Proceed without image
+            } else {
+                return; // Stop saving
+            }
         }
     }
 
