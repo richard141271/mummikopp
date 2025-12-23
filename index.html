@@ -69,6 +69,11 @@
                 </div>
                 <button onclick="generatePDF()">Last ned PDF</button>
             </div>
+            
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Søk i samling (navn, år, serie...)" oninput="filterCups()">
+            </div>
+
             <div id="collection-container" class="grid-view">
                 <!-- Cups will be injected here -->
                 <p>Laster...</p>
@@ -122,6 +127,14 @@
                     <option value="Sjeldent funn">Sjeldent funn</option>
                 </select>
 
+                <label for="status">Status</label>
+                <select id="status">
+                    <option value="collection">I samling</option>
+                    <option value="for_sale">Til salgs</option>
+                    <option value="sold">Solgt</option>
+                    <option value="wishlist">Ønskeliste</option>
+                </select>
+
                 <label for="condition">Tilstand</label>
                 <select id="condition">
                     <option value="Ny">Ny</option>
@@ -144,6 +157,7 @@
 
                 <button type="submit" class="primary-btn">Lagre Kopp</button>
                 <button type="button" onclick="showSection('view-collection')" class="secondary-btn">Avbryt</button>
+                <button type="button" id="delete-btn" class="danger-btn hidden" onclick="handleDeleteCup()">Slett</button>
             </form>
         </section>
 

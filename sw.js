@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mummi-cache-v3';
+const CACHE_NAME = 'mummi-cache-v5';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

@@ -195,15 +195,17 @@ async function loadCups(userId = null) {
     }
 
     try {
-        const q = firebase.query(
-            firebase.collection(db, "cups"), 
-            firebase.where("user_id", "==", targetUserId)
-        );
+        // Hent alle kopper og filtrer lokalt for å unngå indeks-problemer
+        const q = firebase.query(firebase.collection(db, "cups"));
         
         const querySnapshot = await firebase.getDocs(q);
         cups = [];
         querySnapshot.forEach((doc) => {
-            cups.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            // Manuell filtrering på user_id
+            if (data.user_id === targetUserId) {
+                cups.push({ id: doc.id, ...data });
+            }
         });
 
         // Sort client-side to avoid Firestore Index requirement
@@ -216,7 +218,7 @@ async function loadCups(userId = null) {
         if (!isSharedView) {
             localStorage.setItem('cups_cache', JSON.stringify(cups));
         }
-        renderCups();
+        filterCups(); // This calls renderCups
     } catch (error) {
         console.error('Error loading cups:', error);
         
@@ -229,14 +231,43 @@ async function loadCups(userId = null) {
     }
 }
 
+let filteredCups = [];
+
+function filterCups() {
+    const query = document.getElementById('search-input')?.value.toLowerCase() || '';
+    
+    if (!query) {
+        filteredCups = cups;
+    } else {
+        filteredCups = cups.filter(cup => 
+            cup.name.toLowerCase().includes(query) ||
+            (cup.series && cup.series.toLowerCase().includes(query)) ||
+            (cup.year && String(cup.year).includes(query)) ||
+            (cup.rarity && cup.rarity.toLowerCase().includes(query))
+        );
+    }
+    
+    renderCups();
+}
+
 function renderCups() {
     cupContainer.innerHTML = '';
-    if (cups.length === 0) {
-        cupContainer.innerHTML = '<p>Ingen kopper registrert enda.</p>';
+    
+    // Ensure we are rendering the filtered list, but if filteredCups is empty initially, set it
+    if (filteredCups.length === 0 && (!document.getElementById('search-input')?.value) && cups.length > 0) {
+        filteredCups = cups;
+    }
+
+    if (filteredCups.length === 0) {
+        if (cups.length === 0) {
+             cupContainer.innerHTML = '<p>Ingen kopper registrert enda.</p>';
+        } else {
+             cupContainer.innerHTML = '<p>Ingen treff på søk.</p>';
+        }
         return;
     }
 
-    cups.forEach(cup => {
+    filteredCups.forEach(cup => {
         const card = document.createElement('div');
         card.className = 'cup-card';
         if (!isSharedView) {
@@ -247,7 +278,18 @@ function renderCups() {
         
         const imgUrl = cup.image_url || 'https://via.placeholder.com/150?text=Ingen+bilde';
         
+        const statusMap = {
+            'for_sale': 'Til salgs',
+            'sold': 'Solgt',
+            'wishlist': 'Ønskeliste'
+        };
+        const statusLabel = statusMap[cup.status] ? `<span class="status-badge status-${cup.status}">${statusMap[cup.status]}</span>` : '';
+
         card.innerHTML = `
+            <div class="card-header">
+                ${statusLabel}
+                ${!isSharedView ? `<button class="delete-icon action-btn" onclick="prepareDelete('${cup.id}', event)">🗑️</button>` : ''}
+            </div>
             <img src="${imgUrl}" class="cup-img" alt="${cup.name}" loading="lazy">
             <div class="cup-info">
                 <h3 class="cup-name">${cup.name}</h3>
@@ -255,8 +297,9 @@ function renderCups() {
                     ${cup.series ? `<span>${cup.series}</span><br>` : ''}
                     <span>${cup.year || '?'}</span> • <span>${cup.rarity || 'Standard'}</span>
                 </div>
-                <div style="margin-top: 10px;">
+                <div style="margin-top: 10px; display: flex; gap: 5px; flex-wrap: wrap;">
                     <button class="secondary-btn action-btn" style="padding: 5px; font-size: 0.8rem;" onclick="generateCertificate('${cup.id}')">Sertifikat</button>
+                    <button class="secondary-btn action-btn" style="padding: 5px; font-size: 0.8rem;" onclick="generateSinglePDF('${cup.id}')">PDF</button>
                 </div>
             </div>
         `;
@@ -285,11 +328,13 @@ function editCup(cup) {
     document.getElementById('value').value = cup.current_value || '';
     document.getElementById('purchase_date').value = cup.purchase_date || '';
     document.getElementById('rarity').value = cup.rarity || 'Standard';
+    document.getElementById('status').value = cup.status || 'collection';
     document.getElementById('condition').value = cup.condition || 'Ny';
     document.getElementById('box').checked = cup.box;
     document.getElementById('notes').value = cup.notes || '';
     document.getElementById('image-preview').innerHTML = cup.image_url ? `<img src="${cup.image_url}" width="100">` : '';
     
+    document.getElementById('delete-btn').classList.remove('hidden');
     showSection('view-add');
 }
 
@@ -298,6 +343,7 @@ function resetForm() {
     document.getElementById('form-title').innerText = 'Registrer ny kopp';
     document.getElementById('cup-form').reset();
     document.getElementById('image-preview').innerHTML = '';
+    document.getElementById('delete-btn').classList.add('hidden');
 }
 
 const originalShowSection = showSection;
@@ -313,8 +359,14 @@ showSection = function(id) {
 
 async function handleSaveCup(e) {
     e.preventDefault();
+    console.log("Starting save cup process...");
     if (isSharedView) return;
     
+    if (!currentUser) {
+        alert('Du må være logget inn for å lagre.');
+        return;
+    }
+
     const formData = {
         user_id: currentUser.uid,
         name: document.getElementById('name').value,
@@ -325,6 +377,7 @@ async function handleSaveCup(e) {
         current_value: parseFloat(document.getElementById('value').value) || 0,
         purchase_date: document.getElementById('purchase_date').value || null,
         rarity: document.getElementById('rarity').value,
+        status: document.getElementById('status').value,
         condition: document.getElementById('condition').value,
         box: document.getElementById('box').checked,
         notes: document.getElementById('notes').value,
@@ -350,7 +403,11 @@ async function handleSaveCup(e) {
             imageUrl = await firebase.getDownloadURL(storageRef);
         } catch (err) {
             console.error('Upload error:', err);
-            alert('Feil ved opplasting av bilde');
+            if (err.code === 'storage/unauthorized' || err.message.includes('unauthorized')) {
+                alert('Mangler tilgang til å laste opp bilder. Gå til Firebase Console -> Storage -> Rules og endre "allow write: if false;" til "allow write: if request.auth != null;"');
+            } else {
+                alert('Feil ved opplasting av bilde: ' + err.message);
+            }
             return;
         }
     }
@@ -361,17 +418,30 @@ async function handleSaveCup(e) {
 
     if (navigator.onLine) {
         try {
+            console.log("Saving to Firestore...", formData);
             if (editingId) {
                 const cupRef = firebase.doc(db, "cups", editingId);
                 await firebase.updateDoc(cupRef, formData);
+                console.log("Update success");
             } else {
-                await firebase.addDoc(firebase.collection(db, "cups"), formData);
+                const docRef = await firebase.addDoc(firebase.collection(db, "cups"), formData);
+                console.log("Add success, ID:", docRef.id);
             }
             alert('Kopp lagret!');
             resetForm();
-            showSection('view-collection');
+            
+            // Wait a bit to ensure propagation or just clear cache
+            setTimeout(() => {
+                showSection('view-collection');
+            }, 500);
+            
         } catch (error) {
-            alert('Feil ved lagring: ' + error.message);
+            console.error('Save error:', error);
+            if (error.code === 'permission-denied') {
+                alert('Du mangler skrivetilgang til databasen. Gå til Firebase Console -> Firestore Database -> Rules og endre "allow write: if false;" til "allow write: if request.auth != null;"');
+            } else {
+                alert('Feil ved lagring: ' + error.message);
+            }
         }
     } else {
         formData.id = editingId || 'temp_' + Date.now();
@@ -381,6 +451,47 @@ async function handleSaveCup(e) {
         offlineQueue.push(formData);
         localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
         alert('Lagret lokalt (offline). Synkroniseres når du er på nett.');
+        resetForm();
+        showSection('view-collection');
+    }
+}
+
+async function handleDeleteCup() {
+    if (!editingId) return;
+    
+    if (!confirm('Er du sikker på at du vil slette denne koppen? Dette kan ikke angres.')) {
+        return;
+    }
+
+    if (navigator.onLine) {
+        try {
+            const cupRef = firebase.doc(db, "cups", editingId);
+            await firebase.deleteDoc(cupRef);
+            
+            alert('Kopp slettet.');
+            resetForm();
+            showSection('view-collection');
+        } catch (error) {
+            console.error('Delete error:', error);
+            alert('Feil ved sletting: ' + error.message);
+        }
+    } else {
+        // Offline delete
+        offlineQueue.push({
+            action: 'delete',
+            id: editingId
+        });
+        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+        
+        // Remove from local cache immediately so it disappears from UI
+        if (localStorage.getItem('cups_cache')) {
+            let cachedCups = JSON.parse(localStorage.getItem('cups_cache'));
+            cachedCups = cachedCups.filter(c => c.id !== editingId);
+            localStorage.setItem('cups_cache', JSON.stringify(cachedCups));
+            cups = cachedCups; // Update memory
+        }
+
+        alert('Slettet lokalt (offline). Synkroniseres når du er på nett.');
         resetForm();
         showSection('view-collection');
     }
@@ -412,6 +523,9 @@ async function syncOfflineData() {
             } else if (action === 'update') {
                 const cupRef = firebase.doc(db, "cups", id);
                 await firebase.updateDoc(cupRef, data);
+            } else if (action === 'delete') {
+                const cupRef = firebase.doc(db, "cups", id);
+                await firebase.deleteDoc(cupRef);
             }
         } catch (error) {
             console.error('Sync failed for item', item, error);
@@ -435,9 +549,12 @@ function updateSummary() {
 }
 
 function updateSummaryUI() {
-    const totalCount = cups.reduce((sum, cup) => sum + (cup.count || 1), 0);
-    const totalValue = cups.reduce((sum, cup) => sum + ((cup.current_value || 0) * (cup.count || 1)), 0);
-    const totalCost = cups.reduce((sum, cup) => sum + ((cup.price_paid || 0) * (cup.count || 1)), 0);
+    // Use filteredCups if available, else cups
+    const targetCups = (filteredCups.length > 0 || document.getElementById('search-input')?.value) ? filteredCups : cups;
+    
+    const totalCount = targetCups.reduce((sum, cup) => sum + (cup.count || 1), 0);
+    const totalValue = targetCups.reduce((sum, cup) => sum + ((cup.current_value || 0) * (cup.count || 1)), 0);
+    const totalCost = targetCups.reduce((sum, cup) => sum + ((cup.price_paid || 0) * (cup.count || 1)), 0);
     const increase = totalValue - totalCost;
 
     document.getElementById('stat-count').innerText = totalCount;
@@ -452,13 +569,16 @@ function generatePDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
+    const targetCups = (filteredCups.length > 0 || document.getElementById('search-input')?.value) ? filteredCups : cups;
+
     doc.setFontSize(20);
     doc.text("Min Mummikopp Samling", 14, 20);
     
     doc.setFontSize(12);
     doc.text(`Generert: ${new Date().toLocaleDateString('nb-NO')}`, 14, 30);
+    doc.text(`Antall kopper: ${targetCups.length}`, 14, 36);
     
-    const tableData = cups.map(cup => [
+    const tableData = targetCups.map(cup => [
         cup.name,
         cup.series || '-',
         cup.year || '-',
@@ -475,31 +595,113 @@ function generatePDF() {
     doc.save("mummikopp-samling.pdf");
 }
 
-window.generateCertificate = function(cupId) {
+window.generateSinglePDF = function(cupId) {
+    const cup = cups.find(c => c.id == cupId);
+    if (!cup) return;
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    doc.setFontSize(22);
+    doc.text(cup.name, 14, 20);
+    
+    doc.setFontSize(12);
+    let y = 30;
+    
+    const details = [
+        ['Serie:', cup.series],
+        ['År:', cup.year],
+        ['Verdi:', `${cup.current_value} kr`],
+        ['Notater:', cup.notes]
+    ];
+    
+    details.forEach(([label, value]) => {
+        if(value) {
+            doc.text(`${label} ${value}`, 14, y);
+            y += 10;
+        }
+    });
+    
+    doc.save(`${cup.name}_info.pdf`);
+}
+
+window.prepareDelete = function(id, event) {
+    event.stopPropagation();
+    editingId = id;
+    handleDeleteCup();
+}
+
+window.generateCertificate = async function(cupId) {
     const cup = cups.find(c => c.id == cupId);
     if (!cup) return;
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
-    doc.setLineWidth(2);
+    // Exclusive Border
+    doc.setLineWidth(3);
+    doc.setDrawColor(50, 50, 50);
     doc.rect(10, 10, 190, 277);
+    doc.setLineWidth(1);
+    doc.rect(15, 15, 180, 267);
     
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.text("Samlersertifikat", 105, 30, { align: "center" });
+    // Background tint (optional, maybe light cream if possible, but keep white for print)
+    
+    // Header
+    doc.setFont("times", "bold");
+    doc.setFontSize(30);
+    doc.setTextColor(50, 50, 50);
+    doc.text("Samlersertifikat", 105, 40, { align: "center" });
     
     doc.setFontSize(14);
-    doc.setFont("helvetica", "normal");
-    doc.text("Bekreftelse på eierskap i Mummisamling", 105, 40, { align: "center" });
+    doc.setFont("times", "italic");
+    doc.text("Bekreftelse på eierskap i Mummisamling", 105, 50, { align: "center" });
     
-    let y = 60;
+    let y = 70;
+
+    // Image
+    if (cup.image_url) {
+        try {
+            // Create an image element to load the URL
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.src = cup.image_url;
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+            
+            // Calculate aspect ratio to fit in a box (e.g., 80x80)
+            const maxSize = 80;
+            let w = img.width;
+            let h = img.height;
+            const ratio = Math.min(maxSize / w, maxSize / h);
+            w = w * ratio;
+            h = h * ratio;
+            
+            doc.addImage(img, 'JPEG', 105 - (w/2), y, w, h);
+            y += h + 15;
+        } catch (e) {
+            console.error("Could not load image for PDF", e);
+            doc.text("(Bilde kunne ikke lastes)", 105, y + 20, { align: "center" });
+            y += 40;
+        }
+    } else {
+        y += 10;
+    }
     
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
+    // Cup Name
+    doc.setFontSize(24);
+    doc.setFont("times", "bold");
     doc.text(cup.name, 105, y, { align: "center" });
     y += 20;
 
+    // Divider line
+    doc.setDrawColor(150, 150, 150);
+    doc.line(60, y, 150, y);
+    y += 20;
+
+    // Details
     const details = [
         ['Serie / Utgave:', cup.series],
         ['Produsentår:', cup.year],
@@ -512,20 +714,26 @@ window.generateCertificate = function(cupId) {
     ];
 
     doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("times", "normal");
     
     details.forEach(([label, value]) => {
         if (value) {
-            doc.text(`${label}`, 40, y);
-            const splitValue = doc.splitTextToSize(String(value), 100);
+            doc.setFont("times", "bold");
+            doc.text(`${label}`, 50, y);
+            
+            doc.setFont("times", "normal");
+            const splitValue = doc.splitTextToSize(String(value), 90);
             doc.text(splitValue, 90, y);
-            y += 10 * splitValue.length;
+            y += 8 * Math.max(1, splitValue.length);
         }
     });
     
-    y = 250;
+    // Footer
+    y = 260;
     doc.setFontSize(10);
+    doc.setFont("times", "italic");
     doc.text("Autentisert av Mummikopp Samler App", 105, y, { align: "center" });
+    doc.text(`Generert: ${new Date().toLocaleDateString('nb-NO')}`, 105, y + 5, { align: "center" });
     
     doc.save(`${cup.name.replace(/\s+/g, '_')}_sertifikat.pdf`);
 }
@@ -533,5 +741,6 @@ window.generateCertificate = function(cupId) {
 window.showSection = showSection;
 window.setCollectionView = setCollectionView;
 window.generatePDF = generatePDF;
+window.handleDeleteCup = handleDeleteCup;
 window.logout = logout;
 window.shareCollection = shareCollection;

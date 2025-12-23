@@ -127,6 +127,20 @@ button.secondary-btn {
     cursor: pointer;
 }
 
+button.danger-btn {
+    background-color: #ffebee;
+    border: 1px solid #ffcdd2;
+    color: #c62828;
+    padding: 0.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+button.danger-btn:hover {
+    background-color: #ffcdd2;
+}
+
 /* Collection View */
 .controls {
     display: flex;
@@ -135,6 +149,20 @@ button.secondary-btn {
     margin-bottom: 1rem;
     flex-wrap: wrap;
     gap: 1rem;
+}
+
+.search-bar {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.search-bar input {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1rem;
+    border: 2px solid var(--accent-color);
+    border-radius: 8px;
+    box-sizing: border-box; /* Ensure padding doesn't overflow width */
 }
 
 .view-toggles button {
@@ -158,6 +186,66 @@ button.secondary-btn {
     background: white;
     transition: transform 0.2s;
     cursor: pointer;
+    position: relative;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    padding: 0.5rem;
+    position: absolute;
+    width: 100%;
+    box-sizing: border-box;
+    z-index: 10;
+    pointer-events: none; /* Let clicks pass through to card unless hitting buttons */
+}
+
+.card-header > * {
+    pointer-events: auto; /* Re-enable clicks for buttons/badges */
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.status-for_sale {
+    background-color: #27ae60;
+}
+
+.status-sold {
+    background-color: #7f8c8d;
+}
+
+.status-wishlist {
+    background-color: #8e44ad;
+}
+
+.delete-icon {
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    margin-left: auto; /* Push to right if alone */
+}
+
+.delete-icon:hover {
+    background: #ffebee;
+    color: #c62828;
+    transform: scale(1.1);
 }
 
 .cup-card:hover {
