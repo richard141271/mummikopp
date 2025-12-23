@@ -81,7 +81,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('auth-form').addEventListener('submit', handleLogin);
     document.getElementById('cup-form').addEventListener('submit', handleSaveCup);
     document.getElementById('image').addEventListener('change', handleImagePreview);
+    
+    populateYearDropdown();
 });
+
+function populateYearDropdown() {
+    const yearSelect = document.getElementById('year');
+    const currentYear = new Date().getFullYear();
+    const startYear = 1990;
+    
+    // Clear existing (except first placeholder)
+    while (yearSelect.options.length > 1) {
+        yearSelect.remove(1);
+    }
+
+    for (let y = currentYear + 1; y >= startYear; y--) {
+        const option = document.createElement('option');
+        option.value = y;
+        option.text = y;
+        yearSelect.appendChild(option);
+    }
+}
 
 // Navigation
 function showSection(sectionId) {
@@ -399,15 +419,24 @@ async function handleSaveCup(e) {
         try {
             const fileName = `${currentUser.uid}/${Date.now()}_${imageFile.name}`;
             const storageRef = firebase.ref(storage, 'cup-images/' + fileName);
+            console.log("Starting upload...", fileName);
             await firebase.uploadBytes(storageRef, imageFile);
+            console.log("Upload complete, getting URL...");
             imageUrl = await firebase.getDownloadURL(storageRef);
+            console.log("Image URL obtained:", imageUrl);
         } catch (err) {
-            console.error('Upload error:', err);
+            console.error('Upload error detailed:', err);
+            
             if (err.code === 'storage/unauthorized' || err.message.includes('unauthorized')) {
-                alert('Mangler tilgang til å laste opp bilder. Gå til Firebase Console -> Storage -> Rules og endre "allow write: if false;" til "allow write: if request.auth != null;"');
+                alert('Mangler tilgang til å laste opp bilder. Sjekk Storage Rules i Firebase Console.');
+            } else if (err.code === 'storage/retry-limit-exceeded') {
+                alert('Opplasting tok for lang tid. Sjekk internettforbindelsen din.');
+            } else if (err.message.includes('ERR_FAILED')) {
+                 alert('Nettverksfeil ved opplasting av bilde (CORS/Adblock?). Prøv en annen nettleser eller sjekk konsollen.');
             } else {
-                alert('Feil ved opplasting av bilde: ' + err.message);
+                alert('Feil ved opplasting av bilde: ' + err.message + ' (Se konsoll for detaljer)');
             }
+            // Allow saving without image if upload fails? No, return to avoid data mismatch
             return;
         }
     }
