@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mummikopp Samler</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+    <header>
+        <h1>Mummikopp Samler</h1>
+        <nav id="main-nav" class="hidden">
+            <button onclick="showSection('view-collection')">Samling</button>
+            <button onclick="showSection('view-add')">Ny Kopp</button>
+            <button onclick="showSection('view-summary')">Oversikt</button>
+            <button onclick="logout()">Logg ut</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Auth Section -->
+        <section id="view-auth">
+            <h2>Logg inn / Registrer</h2>
+            <form id="auth-form">
+                <label for="email">E-post</label>
+                <input type="email" id="email" required placeholder="din@epost.no">
+                <button type="submit">Send magisk lenke</button>
+            </form>
+            <p id="auth-message"></p>
+        </section>
+
+        <!-- Collection View -->
+        <section id="view-collection" class="hidden">
+            <div class="controls">
+                <h2>Min Samling</h2>
+                <div class="view-toggles">
+                    <button onclick="setCollectionView('grid')">Rutenett</button>
+                    <button onclick="setCollectionView('list')">Liste</button>
+                </div>
+                <button onclick="generatePDF()">Last ned PDF</button>
+            </div>
+            <div id="collection-container" class="grid-view">
+                <!-- Cups will be injected here -->
+                <p>Laster...</p>
+            </div>
+        </section>
+
+        <!-- Add/Edit Cup View -->
+        <section id="view-add" class="hidden">
+            <h2 id="form-title">Registrer ny kopp</h2>
+            <form id="cup-form">
+                <input type="hidden" id="cup-id">
+                
+                <label for="name">Navn på kopp *</label>
+                <input type="text" id="name" required>
+
+                <label for="series">Serie / Utgave</label>
+                <input type="text" id="series" placeholder="F.eks. Sommer 2023">
+
+                <div class="row">
+                    <div>
+                        <label for="year">Produsentår</label>
+                        <input type="number" id="year" placeholder="YYYY">
+                    </div>
+                    <div>
+                        <label for="count">Antall i besittelse</label>
+                        <input type="number" id="count" value="1" min="1">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div>
+                        <label for="price">Pris kjøpt (kr)</label>
+                        <input type="number" id="price" min="0">
+                    </div>
+                    <div>
+                        <label for="value">Verdi i dag (kr)</label>
+                        <input type="number" id="value" min="0">
+                    </div>
+                </div>
+
+                <label for="purchase_date">Kjøpsdato</label>
+                <input type="date" id="purchase_date">
+
+                <label for="rarity">Rarity-tag</label>
+                <select id="rarity">
+                    <option value="Standard">Standard</option>
+                    <option value="Sommer">Sommer</option>
+                    <option value="Vinter">Vinter</option>
+                    <option value="Limited Edition">Limited Edition</option>
+                    <option value="Jubileum">Jubileum</option>
+                    <option value="Sjeldent funn">Sjeldent funn</option>
+                </select>
+
+                <label for="condition">Tilstand</label>
+                <select id="condition">
+                    <option value="Ny">Ny</option>
+                    <option value="Brukt – som ny">Brukt – som ny</option>
+                    <option value="Brukt – normal slitasje">Brukt – normal slitasje</option>
+                    <option value="Brukt – tydelige merker">Brukt – tydelige merker</option>
+                </select>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="box">
+                    Med original eske
+                </label>
+
+                <label for="notes">Notater / Minner</label>
+                <textarea id="notes" rows="3"></textarea>
+
+                <label for="image">Bilde</label>
+                <input type="file" id="image" accept="image/*">
+                <div id="image-preview"></div>
+
+                <button type="submit" class="primary-btn">Lagre Kopp</button>
+                <button type="button" onclick="showSection('view-collection')" class="secondary-btn">Avbryt</button>
+            </form>
+        </section>
+
+        <!-- Summary View -->
+        <section id="view-summary" class="hidden">
+            <h2>Oversikt</h2>
+            <div class="stats-card">
+                <h3>Totalt antall kopper</h3>
+                <p id="stat-count" class="stat-value">0</p>
+            </div>
+            <div class="stats-card">
+                <h3>Samlet verdi</h3>
+                <p id="stat-value" class="stat-value">0 kr</p>
+            </div>
+            <div class="stats-card">
+                <h3>Verdiøkning</h3>
+                <p id="stat-increase" class="stat-value">0 kr</p>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker registered'))
+                .catch(err => console.log('Service Worker failed', err));
+        }
+    </script>
+</body>
+</html>

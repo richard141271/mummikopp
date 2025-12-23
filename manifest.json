@@ -1,0 +1,22 @@
+{
+  "name": "Mummikopp Samler",
+  "short_name": "Mummikopp",
+  "description": "Hold oversikt over din Mummikopp-samling",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8f5f2",
+  "theme_color": "#2c3e50",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192.png?text=Mummi",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512.png?text=Mummi",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "lang": "nb"
+}
