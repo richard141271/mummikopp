@@ -197,14 +197,20 @@ async function loadCups(userId = null) {
     try {
         const q = firebase.query(
             firebase.collection(db, "cups"), 
-            firebase.where("user_id", "==", targetUserId),
-            firebase.orderBy("created_at", "desc")
+            firebase.where("user_id", "==", targetUserId)
         );
         
         const querySnapshot = await firebase.getDocs(q);
         cups = [];
         querySnapshot.forEach((doc) => {
             cups.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Sort client-side to avoid Firestore Index requirement
+        cups.sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+            const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+            return dateB - dateA; // Descending
         });
 
         if (!isSharedView) {
