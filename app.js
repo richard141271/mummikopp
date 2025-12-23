@@ -1,14 +1,65 @@
-// Supabase Configuration
-// REPLACE THESE WITH YOUR OWN SUPABASE PROJECT DETAILS
-const SUPABASE_URL = 'https://your-project.supabase.co';
-const SUPABASE_KEY = 'your-anon-key';
+// Firebase Configuration
+const firebaseConfig = { 
+  apiKey: "AIzaSyClX0a3UyVrGTmmFHT5opE8rxIQTZQaSAw", 
+  authDomain: "mummikopp-94e30.firebaseapp.com", 
+  projectId: "mummikopp-94e30", 
+  storageBucket: "mummikopp-94e30.firebasestorage.app", 
+  messagingSenderId: "319234388892", 
+  appId: "1:319234388892:web:09c141b3518d3cb6e18e59", 
+  measurementId: "G-3YJ92N4MSJ" 
+};
 
-if (SUPABASE_URL === 'https://your-project.supabase.co') {
-    alert('VIKTIG: Du må sette inn din egen Supabase URL og Key i app.js for at appen skal virke!');
-    console.error('Mangler Supabase konfigurasjon. Se app.js linje 3-4.');
+// Check for missing config
+if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+    alert('VIKTIG: Du må sette inn din egen Firebase-konfigurasjon i app.js!');
+    console.error('Mangler Firebase konfigurasjon. Se app.js linje 3-10.');
 }
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Initialize Firebase (waiting for modules to be loaded from index.html)
+let auth, db, storage;
+let firebase;
+
+function initFirebase() {
+    if (!window.firebaseModules) {
+        setTimeout(initFirebase, 100);
+        return;
+    }
+    
+    firebase = window.firebaseModules;
+    const app = firebase.initializeApp(firebaseConfig);
+    auth = firebase.getAuth(app);
+    db = firebase.getFirestore(app);
+    storage = firebase.getStorage(app);
+    
+    // Listen for auth state changes
+    firebase.onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            handleAuthSuccess();
+        } else {
+            currentUser = null;
+            nav.classList.add('hidden');
+            if (!isSharedView) showSection('view-auth');
+        }
+    });
+
+    // Check for email link sign-in
+    if (firebase.isSignInWithEmailLink(auth, window.location.href)) {
+        let email = window.localStorage.getItem('emailForSignIn');
+        if (!email) {
+            email = window.prompt('Vennligst bekreft e-posten din for å logge inn:');
+        }
+        firebase.signInWithEmailLink(auth, email, window.location.href)
+            .then((result) => {
+                window.localStorage.removeItem('emailForSignIn');
+                window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
+                // Auth listener will handle the rest
+            })
+            .catch((error) => {
+                alert('Feil ved innlogging via lenke: ' + error.message);
+            });
+    }
+}
 
 // State
 let currentUser = null;
@@ -28,6 +79,8 @@ const cupContainer = document.getElementById('collection-container');
 
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
+    initFirebase();
+
     // Check for shared view
     const urlParams = new URLSearchParams(window.location.search);
     const sharedUserId = urlParams.get('user_id');
@@ -35,8 +88,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sharedUserId) {
         isSharedView = true;
         handleSharedView(sharedUserId);
-    } else {
-        checkUser();
     }
     
     // Offline/Online listeners
@@ -56,28 +107,6 @@ function showSection(sectionId) {
     
     if (sectionId === 'view-collection') loadCups();
     if (sectionId === 'view-summary') updateSummary();
-}
-
-// Auth
-async function checkUser() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-        currentUser = session.user;
-        handleAuthSuccess();
-    } else {
-        showSection('view-auth');
-    }
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-            currentUser = session.user;
-            handleAuthSuccess();
-        } else {
-            currentUser = null;
-            nav.classList.add('hidden');
-            if (!isSharedView) showSection('view-auth');
-        }
-    });
 }
 
 function handleAuthSuccess() {
@@ -102,50 +131,58 @@ async function handleLogin(e) {
     
     console.log('Forsøker å logge inn med:', email);
     
+    const actionCodeSettings = {
+        url: window.location.href, // Redirect back to this app
+        handleCodeInApp: true
+    };
+
     try {
-        const { error } = await supabase.auth.signInWithOtp({ email });
-        if (error) {
-            console.error('Login error:', error);
-            alert('Feil ved innlogging: ' + error.message);
-        } else {
-            console.log('Magisk lenke sendt!');
-            document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
-        }
-    } catch (err) {
-        console.error('Uventet feil:', err);
-        alert('Noe gikk galt. Sjekk konsollen (F12) for detaljer.');
+        await firebase.sendSignInSignInLinkToEmail(auth, email, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', email);
+        console.log('Magisk lenke sendt!');
+        document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
+    } catch (error) {
+        // Fallback: If sendSignInLink fails (e.g. config issue), try simple alert
+        console.error('Login error:', error);
+        
+        // Note: For a real app, you should use Email Link or Google Auth. 
+        // For testing without setting up Email/SMTP in Firebase console, 
+        // you might want to use Anonymous auth temporarily:
+        // await firebase.signInAnonymously(auth);
+        
+        alert('Feil ved sending av lenke: ' + error.message);
     }
 }
 
 async function logout() {
-    await supabase.auth.signOut();
+    await firebase.signOut(auth);
     window.location.href = window.location.pathname; // Reload to clear state
 }
 
 // Shared View Logic
 async function handleSharedView(userId) {
-    // Hide auth, show collection in read-only
     views.auth.classList.add('hidden');
-    nav.classList.add('hidden'); // Hide normal nav
+    nav.classList.add('hidden');
     
-    // Add a "Back to Home / Create Own" button
     const header = document.querySelector('header');
-    const homeBtn = document.createElement('button');
-    homeBtn.innerText = 'Lag din egen samling';
-    homeBtn.onclick = () => window.location.href = window.location.pathname;
-    homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer;";
-    header.appendChild(homeBtn);
+    if (!document.getElementById('home-btn')) {
+        const homeBtn = document.createElement('button');
+        homeBtn.id = 'home-btn';
+        homeBtn.innerText = 'Lag din egen samling';
+        homeBtn.onclick = () => window.location.href = window.location.pathname;
+        homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer;";
+        header.appendChild(homeBtn);
+    }
 
-    document.querySelector('.controls button[onclick="showSection(\'view-add\')"]')?.remove(); // Remove "Ny Kopp" if visible
+    document.querySelector('.controls button[onclick="showSection(\'view-add\')"]')?.remove();
     
-    // Load cups for specific user
     loadCups(userId);
     showSection('view-collection');
 }
 
 function shareCollection() {
     if (!currentUser) return;
-    const url = `${window.location.origin}${window.location.pathname}?user_id=${currentUser.id}`;
+    const url = `${window.location.origin}${window.location.pathname}?user_id=${currentUser.uid}`;
     navigator.clipboard.writeText(url).then(() => {
         alert('Lenke til din samling er kopiert til utklippstavlen!');
     });
@@ -155,11 +192,10 @@ function shareCollection() {
 async function loadCups(userId = null) {
     cupContainer.innerHTML = '<p>Laster...</p>';
     
-    const targetUserId = userId || (currentUser ? currentUser.id : null);
+    const targetUserId = userId || (currentUser ? currentUser.uid : null);
     if (!targetUserId) return;
 
     if (!navigator.onLine && !isSharedView) {
-        // Load from local cache if offline (only for own collection)
         const cached = localStorage.getItem('cups_cache');
         if (cached) {
             cups = JSON.parse(cached);
@@ -168,21 +204,32 @@ async function loadCups(userId = null) {
         }
     }
 
-    const { data, error } = await supabase
-        .from('cups')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('created_at', { ascending: false });
+    try {
+        const q = firebase.query(
+            firebase.collection(db, "cups"), 
+            firebase.where("user_id", "==", targetUserId),
+            firebase.orderBy("created_at", "desc")
+        );
+        
+        const querySnapshot = await firebase.getDocs(q);
+        cups = [];
+        querySnapshot.forEach((doc) => {
+            cups.push({ id: doc.id, ...doc.data() });
+        });
 
-    if (error) {
-        console.error('Error loading cups:', error);
-        cupContainer.innerHTML = '<p>Kunne ikke laste samling.</p>';
-    } else {
-        cups = data;
         if (!isSharedView) {
             localStorage.setItem('cups_cache', JSON.stringify(cups));
         }
         renderCups();
+    } catch (error) {
+        console.error('Error loading cups:', error);
+        
+        // Fallback for indexing error or permission error
+        if (error.message.includes('requires an index')) {
+             alert('Firestore trenger en indeks. Sjekk konsollen for lenke til å opprette den.');
+        }
+        
+        cupContainer.innerHTML = '<p>Kunne ikke laste samling. (Sjekk konsoll)</p>';
     }
 }
 
@@ -196,7 +243,6 @@ function renderCups() {
     cups.forEach(cup => {
         const card = document.createElement('div');
         card.className = 'cup-card';
-        // Only allow edit if not shared view
         if (!isSharedView) {
             card.onclick = (e) => {
                 if (!e.target.closest('.action-btn')) editCup(cup);
@@ -221,7 +267,7 @@ function renderCups() {
         cupContainer.appendChild(card);
     });
     
-    updateSummaryUI(); // Update stats in background
+    updateSummaryUI();
 }
 
 function setCollectionView(type) {
@@ -251,7 +297,6 @@ function editCup(cup) {
     showSection('view-add');
 }
 
-// Reset form for new entry
 function resetForm() {
     editingId = null;
     document.getElementById('form-title').innerText = 'Registrer ny kopp';
@@ -259,13 +304,11 @@ function resetForm() {
     document.getElementById('image-preview').innerHTML = '';
 }
 
-// Hook reset into the "Ny Kopp" button
 const originalShowSection = showSection;
 showSection = function(id) {
     if (id === 'view-add' && !editingId) {
         resetForm();
     }
-    // If switching away from add, clear editing state
     if (id !== 'view-add') {
         editingId = null;
     }
@@ -274,10 +317,10 @@ showSection = function(id) {
 
 async function handleSaveCup(e) {
     e.preventDefault();
-    if (isSharedView) return; // Security check
+    if (isSharedView) return;
     
     const formData = {
-        user_id: currentUser.id,
+        user_id: currentUser.uid,
         name: document.getElementById('name').value,
         series: document.getElementById('series').value,
         year: parseInt(document.getElementById('year').value) || null,
@@ -292,29 +335,23 @@ async function handleSaveCup(e) {
         updated_at: new Date().toISOString()
     };
 
+    if (!editingId) {
+        formData.created_at = new Date().toISOString();
+    }
+
     const imageFile = document.getElementById('image').files[0];
     let imageUrl = null;
 
-    // Handle Image Upload
     if (imageFile) {
         if (!navigator.onLine) {
             alert('Kan ikke laste opp bilde mens du er offline. Prøv igjen senere.');
             return;
         }
         try {
-            const fileName = `${currentUser.id}/${Date.now()}_${imageFile.name}`;
-            const { data, error } = await supabase.storage
-                .from('cup-images')
-                .upload(fileName, imageFile);
-                
-            if (error) throw error;
-            
-            // Get Public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('cup-images')
-                .getPublicUrl(fileName);
-                
-            imageUrl = publicUrl;
+            const fileName = `${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+            const storageRef = firebase.ref(storage, 'cup-images/' + fileName);
+            await firebase.uploadBytes(storageRef, imageFile);
+            imageUrl = await firebase.getDownloadURL(storageRef);
         } catch (err) {
             console.error('Upload error:', err);
             alert('Feil ved opplasting av bilde');
@@ -327,29 +364,20 @@ async function handleSaveCup(e) {
     }
 
     if (navigator.onLine) {
-        let error;
-        if (editingId) {
-            const { error: err } = await supabase
-                .from('cups')
-                .update(formData)
-                .eq('id', editingId);
-            error = err;
-        } else {
-            const { error: err } = await supabase
-                .from('cups')
-                .insert([formData]);
-            error = err;
-        }
-
-        if (error) {
-            alert('Feil ved lagring: ' + error.message);
-        } else {
+        try {
+            if (editingId) {
+                const cupRef = firebase.doc(db, "cups", editingId);
+                await firebase.updateDoc(cupRef, formData);
+            } else {
+                await firebase.addDoc(firebase.collection(db, "cups"), formData);
+            }
             alert('Kopp lagret!');
             resetForm();
             showSection('view-collection');
+        } catch (error) {
+            alert('Feil ved lagring: ' + error.message);
         }
     } else {
-        // Offline Queue
         formData.id = editingId || 'temp_' + Date.now();
         formData.action = editingId ? 'update' : 'insert';
         if (imageUrl) formData.image_url = imageUrl; 
@@ -373,7 +401,6 @@ function handleImagePreview(e) {
     }
 }
 
-// Sync
 async function syncOfflineData() {
     if (offlineQueue.length === 0) return;
     
@@ -382,19 +409,17 @@ async function syncOfflineData() {
     const newQueue = [];
     for (const item of offlineQueue) {
         const { action, id, ...data } = item;
-        let error;
         
-        if (action === 'insert') {
-            const { error: err } = await supabase.from('cups').insert([data]);
-            error = err;
-        } else if (action === 'update') {
-            const { error: err } = await supabase.from('cups').update(data).eq('id', id);
-            error = err;
-        }
-        
-        if (error) {
+        try {
+            if (action === 'insert') {
+                await firebase.addDoc(firebase.collection(db, "cups"), data);
+            } else if (action === 'update') {
+                const cupRef = firebase.doc(db, "cups", id);
+                await firebase.updateDoc(cupRef, data);
+            }
+        } catch (error) {
             console.error('Sync failed for item', item, error);
-            newQueue.push(item); // Keep in queue
+            newQueue.push(item);
         }
     }
     
@@ -409,7 +434,6 @@ async function syncOfflineData() {
     }
 }
 
-// Summary
 function updateSummary() {
     updateSummaryUI();
 }
@@ -428,7 +452,6 @@ function updateSummaryUI() {
     incEl.style.color = increase >= 0 ? 'green' : 'red';
 }
 
-// PDF Generation - Collection
 function generatePDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -456,7 +479,6 @@ function generatePDF() {
     doc.save("mummikopp-samling.pdf");
 }
 
-// PDF Generation - Single Certificate
 window.generateCertificate = function(cupId) {
     const cup = cups.find(c => c.id == cupId);
     if (!cup) return;
@@ -464,7 +486,6 @@ window.generateCertificate = function(cupId) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
-    // Border
     doc.setLineWidth(2);
     doc.rect(10, 10, 190, 277);
     
@@ -475,12 +496,6 @@ window.generateCertificate = function(cupId) {
     doc.setFontSize(14);
     doc.setFont("helvetica", "normal");
     doc.text("Bekreftelse på eierskap i Mummisamling", 105, 40, { align: "center" });
-    
-    // Image placeholder
-    // In a real app, we'd need to convert the image URL to Base64 to add it to PDF.
-    // Since we might have CORS issues with Supabase URLs in client-side PDF without proxy,
-    // we will try to add it, but fallback to text if it fails.
-    // For now, let's just list the data elegantly.
     
     let y = 60;
     
@@ -506,14 +521,12 @@ window.generateCertificate = function(cupId) {
     details.forEach(([label, value]) => {
         if (value) {
             doc.text(`${label}`, 40, y);
-            // Split long text
             const splitValue = doc.splitTextToSize(String(value), 100);
             doc.text(splitValue, 90, y);
             y += 10 * splitValue.length;
         }
     });
     
-    // Footer
     y = 250;
     doc.setFontSize(10);
     doc.text("Autentisert av Mummikopp Samler App", 105, y, { align: "center" });
@@ -521,7 +534,6 @@ window.generateCertificate = function(cupId) {
     doc.save(`${cup.name.replace(/\s+/g, '_')}_sertifikat.pdf`);
 }
 
-// Make functions global
 window.showSection = showSection;
 window.setCollectionView = setCollectionView;
 window.generatePDF = generatePDF;

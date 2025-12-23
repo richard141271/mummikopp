@@ -5,7 +5,10 @@ const ASSETS_TO_CACHE = [
     './style.css',
     './app.js',
     './manifest.json',
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+    'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js',
+    'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js',
+    'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js',
+    'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js'
 ];
