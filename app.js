@@ -380,10 +380,22 @@ showSection = function(id) {
 async function handleSaveCup(e) {
     e.preventDefault();
     console.log("Starting save cup process...");
-    if (isSharedView) return;
+    
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn.innerText;
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Lagrer...';
+
+    if (isSharedView) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalBtnText;
+        return;
+    }
     
     if (!currentUser) {
         alert('Du må være logget inn for å lagre.');
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalBtnText;
         return;
     }
 
@@ -414,8 +426,13 @@ async function handleSaveCup(e) {
     if (imageFile) {
         if (!navigator.onLine) {
             alert('Kan ikke laste opp bilde mens du er offline. Prøv igjen senere.');
+            submitBtn.disabled = false;
+            submitBtn.innerText = originalBtnText;
             return;
         }
+        
+        submitBtn.innerText = 'Laster opp bilde...';
+        
         try {
             // Sanitize filename to avoid path issues
             const safeName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -432,7 +449,7 @@ async function handleSaveCup(e) {
             
             let errorMsg = 'Feil ved opplasting av bilde: ' + err.message;
             if (err.code === 'storage/unauthorized' || err.message.includes('unauthorized')) {
-                errorMsg = 'Mangler tilgang til å laste opp bilder. Sjekk Storage Rules i Firebase Console.';
+                errorMsg = 'MANGLER TILGANG: Du må aktivere Firebase Storage og sette reglene til "allow read, write: if request.auth != null;".';
             } else if (err.message.includes('ERR_FAILED')) {
                  errorMsg = 'Nettverksfeil ved opplasting (mulig CORS/Adblock).';
             }
@@ -440,6 +457,8 @@ async function handleSaveCup(e) {
             if (confirm(`${errorMsg}\n\nVil du lagre koppen UTEN bilde?`)) {
                 imageUrl = null; // Proceed without image
             } else {
+                submitBtn.disabled = false;
+                submitBtn.innerText = originalBtnText;
                 return; // Stop saving
             }
         }
@@ -451,6 +470,7 @@ async function handleSaveCup(e) {
 
     if (navigator.onLine) {
         try {
+            submitBtn.innerText = 'Lagrer data...';
             console.log("Saving to Firestore...", formData);
             if (editingId) {
                 const cupRef = firebase.doc(db, "cups", editingId);
@@ -487,6 +507,9 @@ async function handleSaveCup(e) {
         resetForm();
         showSection('view-collection');
     }
+    
+    submitBtn.disabled = false;
+    submitBtn.innerText = originalBtnText;
 }
 
 async function handleDeleteCup() {
