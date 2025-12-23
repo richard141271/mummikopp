@@ -137,7 +137,7 @@ async function handleLogin(e) {
     };
 
     try {
-        await firebase.sendSignInSignInLinkToEmail(auth, email, actionCodeSettings);
+        await firebase.sendSignInLinkToEmail(auth, email, actionCodeSettings);
         window.localStorage.setItem('emailForSignIn', email);
         console.log('Magisk lenke sendt!');
         document.getElementById('auth-message').innerText = 'Sjekk e-posten din for magisk lenke!';
