@@ -55,7 +55,8 @@ const views = {
     auth: document.getElementById('view-auth'),
     collection: document.getElementById('view-collection'),
     add: document.getElementById('view-add'),
-    summary: document.getElementById('view-summary')
+    summary: document.getElementById('view-summary'),
+    import: document.getElementById('view-import')
 };
 const nav = document.getElementById('main-nav');
 const cupContainer = document.getElementById('collection-container');
@@ -194,13 +195,21 @@ async function handleSharedView(userId) {
     if (!document.getElementById('home-btn')) {
         const homeBtn = document.createElement('button');
         homeBtn.id = 'home-btn';
-        homeBtn.innerText = 'Kopier til min samling';
+        
+        if (currentUser && currentUser.uid === userId) {
+             homeBtn.innerText = 'Test Kopiering (Advarsel: Duplisering)';
+             homeBtn.title = "Du ser på din egen samling. Klikk her for å teste kopiering (vil lage duplikater hvis du ikke logger ut).";
+             homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer; background-color: #f39c12; color: white; border: none; border-radius: 5px;";
+        } else {
+             homeBtn.innerText = 'Kopier til min samling';
+             homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer; background-color: #27ae60; color: white; border: none; border-radius: 5px;";
+        }
+        
         homeBtn.onclick = () => {
             // Save intention to import from this user
             sessionStorage.setItem('import_source_id', userId);
             window.location.href = window.location.pathname;
         };
-        homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer; background-color: #27ae60; color: white; border: none; border-radius: 5px;";
         header.appendChild(homeBtn);
     }
 
@@ -902,10 +911,44 @@ let importCupsList = [];
 async function showImportView(sourceId) {
     // Hide other sections
     Object.values(views).forEach(el => el.classList.add('hidden'));
-    document.getElementById('view-import').classList.remove('hidden');
+    if (views.import) views.import.classList.remove('hidden');
     
     const container = document.getElementById('import-container');
-    container.innerHTML = '<p>Laster kopper for import...</p>';
+    
+    // Header with User Info
+    let headerHtml = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd;">
+            <h3>📥 Kopier Samling</h3>
+    `;
+
+    if (currentUser) {
+        headerHtml += `
+            <p>Du er logget inn som: <strong>${currentUser.email}</strong></p>
+            <p style="font-size: 0.9em; color: #666;">Koppene du velger vil bli lagt til i DIN samling.</p>
+        `;
+        
+        if (currentUser.uid === sourceId) {
+            headerHtml += `
+                <div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                    ⚠️ <strong>OBS:</strong> Du prøver å kopiere fra din <em>egen</em> samling. Dette vil skape duplikater.
+                    <br>Hvis du tester funksjonen for en annen person, bør du logge ut først.
+                </div>
+            `;
+        }
+
+        headerHtml += `
+            <button onclick="logout()" class="secondary-btn" style="background: #e74c3c; color: white; margin-top: 5px;">
+                Logg ut (Opprett ny bruker)
+            </button>
+        </div>`;
+    } else {
+        headerHtml += `
+            <p>Vennligst logg inn eller registrer deg for å importere.</p>
+            <button onclick="showSection('view-auth')" class="primary-btn">Gå til innlogging</button>
+        </div>`;
+    }
+
+    container.innerHTML = headerHtml + '<p>Laster kopper for import...</p>';
     
     try {
         const q = firebase.query(firebase.collection(db, "cups"));
@@ -918,16 +961,21 @@ async function showImportView(sourceId) {
             }
         });
         
-        renderImportList();
+        // Append list to header
+        const listContainer = document.createElement('div');
+        listContainer.id = 'import-list-inner';
+        container.appendChild(listContainer);
+        
+        renderImportList(listContainer); // Pass container
     } catch (error) {
         console.error("Error loading import cups", error);
-        container.innerHTML = '<p>Kunne ikke laste kopper. Prøv igjen.</p>';
+        container.innerHTML += '<p style="color: red">Kunne ikke laste kopper. Prøv igjen.</p>';
     }
 }
 
-function renderImportList() {
-    const container = document.getElementById('import-container');
-    container.innerHTML = '';
+function renderImportList(targetContainer = null) {
+    const container = targetContainer || document.getElementById('import-list-inner') || document.getElementById('import-container');
+    if (!targetContainer) container.innerHTML = ''; // Clear if not appending
     
     if (importCupsList.length === 0) {
         container.innerHTML = '<p>Ingen kopper funnet å importere.</p>';
