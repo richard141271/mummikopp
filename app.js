@@ -125,6 +125,16 @@ function handleAuthSuccess() {
         nav.appendChild(shareBtn);
     }
     
+    // Add Force Update Button (for troubleshooting)
+    if (!document.getElementById('update-btn')) {
+        const updateBtn = document.createElement('button');
+        updateBtn.id = 'update-btn';
+        updateBtn.innerText = 'Oppdater App';
+        updateBtn.style.backgroundColor = '#e74c3c'; // Red to stand out
+        updateBtn.onclick = forceUpdateApp;
+        nav.appendChild(updateBtn);
+    }
+
     showSection('view-collection');
 }
 
@@ -428,12 +438,20 @@ async function handleSaveCup(e) {
         
         try {
             // New strategy: Compress to Base64 and store directly in Firestore
-            // This avoids Firebase Storage completely (which requires billing/upgrades for some regions/accounts)
             imageUrl = await compressImage(imageFile);
+            
+            if (!imageUrl) {
+                throw new Error("Komprimering ga tomt resultat");
+            }
             console.log("Image compressed successfully, size:", imageUrl.length);
+            
+            if (imageUrl.length > 1000000) {
+                 alert("Advarsel: Bildet er fortsatt veldig stort (" + Math.round(imageUrl.length/1024) + "kB). Det kan hende lagring feiler.");
+            }
+            
         } catch (err) {
             console.error('Image processing error:', err);
-            if (!confirm(`Kunne ikke behandle bildet: ${err.message}\n\nVil du lagre uten bilde?`)) {
+            if (!confirm(`Kunne ikke behandle bildet (det kan være formatet ikke støttes, f.eks. HEIC). \nFeilmelding: ${err.message}\n\nVil du lagre uten bilde?`)) {
                 submitBtn.disabled = false;
                 submitBtn.innerText = originalBtnText;
                 return;
@@ -443,12 +461,26 @@ async function handleSaveCup(e) {
 
     if (imageUrl) {
         formData.image_url = imageUrl;
+    } else if (!editingId && imageFile) {
+        // If we had a file but no URL (and user said OK to save without), ensure we don't save broken link
+        // formData.image_url is undefined, which is correct.
     }
 
     if (navigator.onLine) {
         try {
+            // Check total size
+            const payloadSize = JSON.stringify(formData).length;
+            if (payloadSize > 900000) { // 900KB safety margin for Firestore 1MB limit
+                 if (!confirm(`ADVARSEL: Dataene (inkludert bildet) er veldig store (${Math.round(payloadSize/1024)}KB). Dette kan feile. Vil du prøve likevel?`)) {
+                     submitBtn.disabled = false;
+                     submitBtn.innerText = originalBtnText;
+                     return;
+                 }
+            }
+
             submitBtn.innerText = 'Lagrer data...';
             console.log("Saving to Firestore...", formData);
+            
             if (editingId) {
                 const cupRef = firebase.doc(db, "cups", editingId);
                 await firebase.updateDoc(cupRef, formData);
@@ -457,7 +489,7 @@ async function handleSaveCup(e) {
                 const docRef = await firebase.addDoc(firebase.collection(db, "cups"), formData);
                 console.log("Add success, ID:", docRef.id);
             }
-            alert('Kopp lagret!');
+            alert('Kopp lagret med suksess!');
             resetForm();
             
             // Wait a bit to ensure propagation or just clear cache
@@ -497,6 +529,11 @@ async function handleDeleteCup() {
     }
 
     if (navigator.onLine) {
+        if (!firebase.deleteDoc) {
+             alert("Nettleseren din bruker en gammel versjon av koden. Vennligst last siden på nytt (Hard Refresh: Cmd+Shift+R på Mac, Ctrl+F5 på PC) for å aktivere sletting.");
+             return;
+        }
+
         try {
             const cupRef = firebase.doc(db, "cups", editingId);
             await firebase.deleteDoc(cupRef);
@@ -550,8 +587,8 @@ function compressImage(file) {
             img.src = event.target.result;
             img.onload = () => {
                 // Max dimensions
-                const MAX_WIDTH = 800;
-                const MAX_HEIGHT = 800;
+                const MAX_WIDTH = 600;
+                const MAX_HEIGHT = 600;
                 let width = img.width;
                 let height = img.height;
 
@@ -573,9 +610,9 @@ function compressImage(file) {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Compress to JPEG 0.6 quality
+                // Compress to JPEG 0.5 quality
                 // This typically yields 30-80KB images, well within Firestore 1MB limit
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
                 resolve(dataUrl);
             };
             img.onerror = (err) => reject(new Error("Kunne ikke laste bilde for komprimering"));
@@ -823,12 +860,20 @@ window.generateCertificate = async function(cupId) {
             doc.setFont("times", "normal");
             const splitValue = doc.splitTextToSize(String(value), 90);
             doc.text(splitValue, 90, y);
-            y += 8 * Math.max(1, splitValue.length);
+            y += 7 * Math.max(1, splitValue.length); // Reduced spacing slightly
         }
     });
     
     // Footer
-    y = 260;
+    // Ensure footer doesn't overlap with content (min Y is 270, but push down if needed)
+    y = Math.max(y + 15, 270);
+    
+    // Check if we ran out of space (page height ~297mm)
+    if (y > 285) {
+        doc.addPage();
+        y = 270;
+    }
+
     doc.setFontSize(10);
     doc.setFont("times", "italic");
     doc.text("Autentisert av Mummikopp Samler App", 105, y, { align: "center" });
@@ -843,3 +888,29 @@ window.generatePDF = generatePDF;
 window.handleDeleteCup = handleDeleteCup;
 window.logout = logout;
 window.shareCollection = shareCollection;
+
+async function forceUpdateApp() {
+    if (!confirm('Dette vil tvinge en oppdatering av appen. Alle midlertidige data slettes og siden lastes på nytt. Er du sikker?')) return;
+    
+    alert("Oppdaterer... vent litt.");
+    
+    // 1. Unregister Service Workers
+    if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+            await registration.unregister();
+        }
+    }
+    
+    // 2. Clear Caches
+    if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const key of keys) {
+            await caches.delete(key);
+        }
+    }
+    
+    // 3. Force Reload
+    window.location.reload(true);
+}
+window.forceUpdateApp = forceUpdateApp;

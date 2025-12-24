@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mummi-cache-v5';
+const CACHE_NAME = 'mummi-cache-v7';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -15,7 +15,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-    self.skipWaiting(); // Force new service worker to activate immediately
+    self.skipWaiting(); 
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             return cache.addAll(ASSETS_TO_CACHE);
@@ -29,19 +29,32 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Network First Strategy
+    // Try to get from network first, fall back to cache if offline
     event.respondWith(
-        caches.match(event.request).then((response) => {
-            return response || fetch(event.request).then((fetchResponse) => {
-                // Cache new requests dynamically (e.g. user images if possible, but careful with storage)
-                // For now, only return fetch if not in cache
-                return fetchResponse;
-            });
-        }).catch(() => {
-            // Fallback for offline if not in cache
-            if (event.request.mode === 'navigate') {
-                return caches.match('./index.html');
-            }
-        })
+        fetch(event.request)
+            .then((response) => {
+                // If we got a valid response, clone it and update the cache
+                if (response && response.status === 200 && response.type === 'basic') {
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseToCache);
+                    });
+                }
+                return response;
+            })
+            .catch(() => {
+                // Network failed, try cache
+                return caches.match(event.request).then((response) => {
+                    if (response) {
+                        return response;
+                    }
+                    // If not in cache and it's a navigation request, return index.html
+                    if (event.request.mode === 'navigate') {
+                        return caches.match('./index.html');
+                    }
+                });
+            })
     );
 });
 
