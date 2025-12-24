@@ -188,6 +188,26 @@
             </div>
         </section>
 
+        <!-- Import View (New) -->
+        <section id="view-import" class="hidden">
+            <h2>Kopier Samling</h2>
+            <p>Velg koppene du vil importere til din egen samling.</p>
+            
+            <div class="import-controls">
+                <label>
+                    <input type="checkbox" id="import-select-all" checked onchange="toggleImportAll(this)"> Velg alle
+                </label>
+                <div class="import-buttons">
+                    <button onclick="executeImport()" class="primary-btn">Importer valgte</button>
+                    <button onclick="cancelImport()" class="secondary-btn">Hopp over</button>
+                </div>
+            </div>
+
+            <div id="import-container" class="list-view">
+                <!-- Import items injected here -->
+            </div>
+        </section>
+
     </main>
 
     <script src="app.js?v=8"></script>

@@ -135,7 +135,13 @@ function handleAuthSuccess() {
         nav.appendChild(updateBtn);
     }
 
-    showSection('view-collection');
+    // Check for pending import
+    const importSource = sessionStorage.getItem('import_source_id');
+    if (importSource) {
+        showImportView(importSource);
+    } else {
+        showSection('view-collection');
+    }
 }
 
 async function handleLogin(e) {
@@ -188,9 +194,13 @@ async function handleSharedView(userId) {
     if (!document.getElementById('home-btn')) {
         const homeBtn = document.createElement('button');
         homeBtn.id = 'home-btn';
-        homeBtn.innerText = 'Lag din egen samling';
-        homeBtn.onclick = () => window.location.href = window.location.pathname;
-        homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer;";
+        homeBtn.innerText = 'Kopier til min samling';
+        homeBtn.onclick = () => {
+            // Save intention to import from this user
+            sessionStorage.setItem('import_source_id', userId);
+            window.location.href = window.location.pathname;
+        };
+        homeBtn.style.cssText = "margin-top: 10px; padding: 5px 10px; cursor: pointer; background-color: #27ae60; color: white; border: none; border-radius: 5px;";
         header.appendChild(homeBtn);
     }
 
@@ -887,6 +897,139 @@ window.setCollectionView = setCollectionView;
 window.generatePDF = generatePDF;
 window.handleDeleteCup = handleDeleteCup;
 window.logout = logout;
+let importCupsList = [];
+
+async function showImportView(sourceId) {
+    // Hide other sections
+    Object.values(views).forEach(el => el.classList.add('hidden'));
+    document.getElementById('view-import').classList.remove('hidden');
+    
+    const container = document.getElementById('import-container');
+    container.innerHTML = '<p>Laster kopper for import...</p>';
+    
+    try {
+        const q = firebase.query(firebase.collection(db, "cups"));
+        const querySnapshot = await firebase.getDocs(q);
+        importCupsList = [];
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.user_id === sourceId) {
+                importCupsList.push({ id: doc.id, ...data });
+            }
+        });
+        
+        renderImportList();
+    } catch (error) {
+        console.error("Error loading import cups", error);
+        container.innerHTML = '<p>Kunne ikke laste kopper. Prøv igjen.</p>';
+    }
+}
+
+function renderImportList() {
+    const container = document.getElementById('import-container');
+    container.innerHTML = '';
+    
+    if (importCupsList.length === 0) {
+        container.innerHTML = '<p>Ingen kopper funnet å importere.</p>';
+        return;
+    }
+    
+    importCupsList.forEach(cup => {
+        const item = document.createElement('div');
+        item.className = 'cup-card'; // Reuse style
+        item.style.cursor = 'pointer';
+        item.onclick = (e) => {
+             // Toggle checkbox if clicking card
+             if (e.target.type !== 'checkbox') {
+                 const cb = item.querySelector('input[type="checkbox"]');
+                 cb.checked = !cb.checked;
+             }
+        };
+
+        const imgUrl = cup.image_url || 'https://via.placeholder.com/150?text=Ingen+bilde';
+        
+        item.innerHTML = `
+            <div style="position: absolute; top: 10px; right: 10px; z-index: 10;">
+                <input type="checkbox" class="import-checkbox" value="${cup.id}" checked style="width: 25px; height: 25px;">
+            </div>
+            <img src="${imgUrl}" class="cup-img" alt="${cup.name}" loading="lazy">
+            <div class="cup-info">
+                <h3 class="cup-name">${cup.name}</h3>
+                <div class="cup-meta">
+                    ${cup.series ? `<span>${cup.series}</span><br>` : ''}
+                    <span>${cup.year || '?'}</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+function toggleImportAll(source) {
+    const checkboxes = document.querySelectorAll('.import-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
+}
+
+async function executeImport() {
+    if (!currentUser) return;
+    
+    const checkboxes = document.querySelectorAll('.import-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert("Du må velge minst én kopp.");
+        return;
+    }
+    
+    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    const cupsToImport = importCupsList.filter(c => selectedIds.includes(c.id));
+    
+    if (!confirm(`Vil du importere ${cupsToImport.length} kopper til din samling?`)) return;
+    
+    const btn = document.querySelector('.import-buttons .primary-btn');
+    const originalText = btn.innerText;
+    btn.innerText = "Importerer...";
+    btn.disabled = true;
+    
+    try {
+        let importedCount = 0;
+        
+        // Process in chunks to avoid overwhelming browser/network
+        for (const cup of cupsToImport) {
+            const { id, user_id, ...cupData } = cup; // Exclude ID and old user_id
+            
+            const newCup = {
+                ...cupData,
+                user_id: currentUser.uid,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                status: 'collection' // Default status
+            };
+            
+            await firebase.addDoc(firebase.collection(db, "cups"), newCup);
+            importedCount++;
+        }
+        
+        alert(`Suksess! ${importedCount} kopper ble importert.`);
+        sessionStorage.removeItem('import_source_id');
+        showSection('view-collection');
+        
+    } catch (error) {
+        console.error("Import failed", error);
+        alert("Noe gikk galt under importen: " + error.message);
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
+function cancelImport() {
+    sessionStorage.removeItem('import_source_id');
+    showSection('view-collection');
+}
+
+window.showImportView = showImportView;
+window.toggleImportAll = toggleImportAll;
+window.executeImport = executeImport;
+window.cancelImport = cancelImport;
 window.shareCollection = shareCollection;
 
 async function forceUpdateApp() {
